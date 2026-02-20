@@ -58,7 +58,7 @@ jobs:
           cl.exe /O2 /out:dropper.exe dropper.cpp
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dropper-exe
           path: src/templates/remote/dropper.exe
