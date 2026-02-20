@@ -54,12 +54,11 @@ jobs:
 
       - name: Compile dropper.cpp
         run: |
-          cd src\templates\remote
           cl.exe /O2 /out:dropper.exe dropper.cpp
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: dropper-exe
-          path: src/templates/remote/dropper.exe
+          path: dropper.exe
           retention-days: 1
