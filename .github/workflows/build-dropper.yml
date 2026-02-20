@@ -62,6 +62,9 @@ jobs:
               Get-ChildItem -Path .
               exit 1
           }
+          Write-Host "✓ dropper.exe created successfully"
+          $fileSize = (Get-Item dropper.exe).Length
+          Write-Host "File size: $fileSize bytes"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
