@@ -24,9 +24,25 @@ jobs:
         with:
           arch: ${{ github.event.inputs.arch }}
 
+      - name: Find HVNC paths
+        run: |
+          $hvncPath = Get-ChildItem -Path . -Filter "HVNC.vcxproj" -Recurse | Select-Object -First 1 -ExpandProperty Directory
+          if (-Not $hvncPath) {
+              Write-Error "Could not find HVNC.vcxproj"
+              exit 1
+          }
+          $hvncClientDir = $hvncPath.FullName
+          $hvncServerDir = Join-Path $hvncClientDir "Server"
+
+          Write-Output "HVNC_CLIENT_DIR=$hvncClientDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "HVNC_SERVER_DIR=$hvncServerDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "✓ Found Client at: $hvncClientDir"
+          Write-Output "✓ Found Server at: $hvncServerDir"
+        shell: pwsh
+
       - name: Build HVNC Client (Release)
         run: |
-          cd hvnc/Client
+          cd "${{ env.HVNC_CLIENT_DIR }}"
           msbuild.exe HVNC.vcxproj /p:Configuration=Release /p:Platform=${{ github.event.inputs.arch }} /verbosity:minimal
           if ($LASTEXITCODE -ne 0) {
               Write-Error "Client compilation failed with exit code $LASTEXITCODE"
@@ -36,7 +52,7 @@ jobs:
 
       - name: Build HVNC Server (Release)
         run: |
-          cd hvnc/Client/Server
+          cd "${{ env.HVNC_SERVER_DIR }}"
           msbuild.exe Server.vcxproj /p:Configuration=Release /p:Platform=${{ github.event.inputs.arch }} /verbosity:minimal
           if ($LASTEXITCODE -ne 0) {
               Write-Error "Server compilation failed with exit code $LASTEXITCODE"
@@ -44,36 +60,39 @@ jobs:
           }
         shell: pwsh
 
-      - name: Verify and collect binaries
+      - name: Find and verify binaries
         run: |
-          $clientBin = "hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Client.exe"
-          $serverBin = "hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Server.exe"
+          $clientExe = Get-ChildItem -Path "${{ env.HVNC_CLIENT_DIR }}" -Filter "Client.exe" -Recurse | Select-Object -First 1
+          $serverExe = Get-ChildItem -Path "${{ env.HVNC_SERVER_DIR }}" -Filter "Server.exe" -Recurse | Select-Object -First 1
 
-          if (-Not (Test-Path $clientBin)) {
-              Write-Error "Client.exe was not created at $clientBin"
-              Get-ChildItem -Path "hvnc/Client/_bin" -Recurse
+          if (-Not $clientExe) {
+              Write-Error "Client.exe was not created"
+              Get-ChildItem -Path "${{ env.HVNC_CLIENT_DIR }}" -Recurse
               exit 1
           }
-          if (-Not (Test-Path $serverBin)) {
-              Write-Error "Server.exe was not created at $serverBin"
-              Get-ChildItem -Path "hvnc/Client/_bin" -Recurse
+          if (-Not $serverExe) {
+              Write-Error "Server.exe was not created"
+              Get-ChildItem -Path "${{ env.HVNC_SERVER_DIR }}" -Recurse
               exit 1
           }
 
-          Write-Output "✓ Client.exe created"
-          Write-Output "✓ Server.exe created"
+          Write-Output "CLIENT_EXE=$($clientExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "SERVER_EXE=$($serverExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Output "✓ Client.exe found at: $($clientExe.FullName)"
+          Write-Output "✓ Server.exe found at: $($serverExe.FullName)"
         shell: pwsh
 
       - name: Upload Client artifact
         uses: actions/upload-artifact@v4
         with:
           name: hvnc-client-${{ github.event.inputs.arch }}
-          path: hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Client.exe
+          path: ${{ env.CLIENT_EXE }}
           retention-days: 1
 
       - name: Upload Server artifact
         uses: actions/upload-artifact@v4
         with:
           name: hvnc-server-${{ github.event.inputs.arch }}
-          path: hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Server.exe
+          path: ${{ env.SERVER_EXE }}
           retention-days: 1
