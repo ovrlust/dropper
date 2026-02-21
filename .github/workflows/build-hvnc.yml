@@ -1,0 +1,79 @@
+name: Build HVNC Client and Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architecture to build (x64 or Win32)'
+        required: true
+        default: 'x64'
+        type: choice
+        options:
+          - x64
+          - Win32
+
+jobs:
+  build-hvnc:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ github.event.inputs.arch }}
+
+      - name: Build HVNC Client (Release)
+        run: |
+          cd hvnc/Client
+          msbuild.exe HVNC.vcxproj /p:Configuration=Release /p:Platform=${{ github.event.inputs.arch }} /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Client compilation failed with exit code $LASTEXITCODE"
+              exit 1
+          }
+        shell: pwsh
+
+      - name: Build HVNC Server (Release)
+        run: |
+          cd hvnc/Client/Server
+          msbuild.exe Server.vcxproj /p:Configuration=Release /p:Platform=${{ github.event.inputs.arch }} /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Server compilation failed with exit code $LASTEXITCODE"
+              exit 1
+          }
+        shell: pwsh
+
+      - name: Verify and collect binaries
+        run: |
+          $clientBin = "hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Client.exe"
+          $serverBin = "hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Server.exe"
+
+          if (-Not (Test-Path $clientBin)) {
+              Write-Error "Client.exe was not created at $clientBin"
+              Get-ChildItem -Path "hvnc/Client/_bin" -Recurse
+              exit 1
+          }
+          if (-Not (Test-Path $serverBin)) {
+              Write-Error "Server.exe was not created at $serverBin"
+              Get-ChildItem -Path "hvnc/Client/_bin" -Recurse
+              exit 1
+          }
+
+          Write-Output "✓ Client.exe created"
+          Write-Output "✓ Server.exe created"
+        shell: pwsh
+
+      - name: Upload Client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hvnc-client-${{ github.event.inputs.arch }}
+          path: hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Client.exe
+          retention-days: 1
+
+      - name: Upload Server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hvnc-server-${{ github.event.inputs.arch }}
+          path: hvnc/Client/_bin/Release/${{ github.event.inputs.arch }}/Server.exe
+          retention-days: 1
